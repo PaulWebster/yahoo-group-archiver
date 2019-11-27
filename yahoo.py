@@ -14,6 +14,7 @@ import re
 import requests.exceptions
 import sys
 import unicodedata
+import mailbox
 from os.path import basename
 from collections import OrderedDict
 from requests.cookies import RequestsCookieJar, create_cookie
@@ -94,15 +95,33 @@ def archive_messages_metadata(yga):
 def archive_message_content(yga, id, status="", skipHTML=False, skipRaw=False):
     logger = logging.getLogger('archive_message_content')
     
+    raw_json = None
+    gotRaw = False
+    
     if skipRaw is False:
-        if file_keep("%s_raw.json" % (id,), " raw message id: %s" % (id,)) is False:
+        fname = "%s_raw.json" % (id,)
+        if file_keep(fname, " raw message id: %s" % (id,)) is False:
             try:
                 logger.info("Fetching  raw message id: %d %s", id, status)
                 raw_json = yga.messages(id, 'raw')
-                with open("%s_raw.json" % (id,), 'wb') as f:
+                with open(fname, 'wb') as f:
                     json.dump(raw_json, codecs.getwriter('utf-8')(f), ensure_ascii=False, indent=4)
+                    gotRaw = True
+                    
             except Exception:
                 logger.exception("Raw grab failed for message %d", id)
+        else:
+            # File present and not overwriting so re-read if needed
+            if args.mbox:
+                try:
+                    with open(fname, 'r', encoding='utf-8') as f:
+                        raw_json = json.load(f)
+                        gotRaw = True
+                except:
+                    logger.exception("ERROR: couldn't load %s from disk.",fname)
+
+        if args.mbox and raw_json.get('rawEmail') is not None:
+            writemailbox(raw_json['rawEmail'], id)
 
     if skipHTML is False:
         if file_keep("%s.json" % (id,), " raw message id: %s" % (id,)) is False:
@@ -327,7 +346,7 @@ def process_single_topic(topicId,unretrievableTopicIds,unretrievableMessageIds,r
     if file_keep("%s.json" % (topicId,), "topic id: %d" % (topicId,)):
         # However, we need the previous and next topic, so we have to load the json.
         try:
-            with open('%s.json' % (topicId,), 'r') as f:
+            with open('%s.json' % (topicId,), 'r', encoding='utf-8') as f:
                 topic_json = json.load(f)
             gotTopic = True
         except:
@@ -778,6 +797,62 @@ def file_keep(fname, type = ""):
     logger.debug("File already present %s", type)
     return True
 
+def writemailbox(msg, id, convertThis=True):
+    """
+    Write out an email message in a different format (mbox)
+    with option to avoid conversion of alignment and XML escaping
+    """
+    logger = logging.getLogger('writemailbox')
+    
+    fname = 'group.mbox'
+    
+    if os.path.exists(fname) is False:
+        logger.info("Creating mailfile %s", fname)
+    
+    mbox = mailbox.mbox(fname, create=True)
+
+    if convertThis:
+        # The rawEmail from Yahoo has \r\n for alignment but this results in double-spacing
+        msg = msg.replace("\r\n", "\n")
+        # Now replace the encoded XML ... danger here of replacing too many but need samples to test
+        msg = unescape(msg)
+        # NOTE: moved the forced encode here because the try/except below not preventing error traceback
+        # - feel free to fix it and move this to where it should be below!
+        # Not having this as ascii causes problems for the mailbox routines
+        msg = msg.encode('ascii', 'xmlcharrefreplace')
+    
+    try:
+        mbox.add(msg)
+        mbox.flush()
+        
+    except ValueError or UnicodeEncodeError:
+        logger.exception("Non-ascii character in message %d - so trying to convert", id)
+        
+        try:
+            msgbytes = msg.encode('ascii', 'xmlcharrefreplace')
+            mbox.add(msgbytes)
+            mbox.flush
+        except Exception:
+            logger.exception("Failed converting or writing message %d", id)
+        
+    except Exception:
+        logger.exception("Failed to write mbox for message %d", id)
+
+def unescape(s):
+    """
+    Replace encoded XML fields with their plain text
+    Note - this is inefficient because it parses the source once for each conversion
+    """
+    logger = logging.getLogger('unescape')
+    
+    s = s.replace("&lt;", "<")
+    s = s.replace("&gt;", ">")
+    s = s.replace("&quot;", '"')
+    s = s.replace("&apos;", "'")
+    # this has to be last:
+    s = s.replace("&amp;", "&")
+    return s
+
 class Mkchdir:
     d = ""
 
@@ -860,9 +935,6 @@ if __name__ == "__main__":
                     help='Only archive general info about the group')
     po.add_argument('-m', '--members', action='store_true',
                     help='Only archive members')
-    po.add_argument('-o', '--overwrite', action='store_true',
-                    help='Overwrite existing files such as email and database records')
-
 
     pr = p.add_argument_group(title='Request Options')
     pr.add_argument('--user-agent', type=str,
@@ -884,6 +956,12 @@ if __name__ == "__main__":
     pf = p.add_argument_group(title='Output Options')
     pf.add_argument('-w', '--warc', action='store_true',
                     help='Output WARC file of raw network requests. [Requires warcio package installed]')
+    pf.add_argument('-o', '--overwrite', action='store_true',
+                    help='Overwrite existing files such as email and database records - default is to not overwrite')
+    pf.add_argument('--mbox', action='store_true',
+                    help='Create mbox-formatted files for email in addition to others - default is no.'
+                    ' Note: group.mbox is appended to, so remove/rename it if you do not want this to happen.')
+
 
     p.add_argument('-v', '--verbose', action='store_true')
     p.add_argument('--colour', '--color', action='store_true', help='Colour log output to terminal')

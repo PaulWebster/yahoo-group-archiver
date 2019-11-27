@@ -63,8 +63,8 @@ Files will be placed into the directory structure groupname/{email,files,photos,
 ```
 usage: yahoo.py [-h] [-ct COOKIE_T] [-cy COOKIE_Y] [-ce COOKIE_E]
                 [-cf COOKIE_FILE] [-e] [-at] [-f] [-i] [-t] [-r] [-d] [-l]
-                [-c] [-p] [-a] [-m] [-o] [--user-agent USER_AGENT]
-                [--start START] [--stop STOP] [--ids IDS [IDS ...]] [-w] [-v]
+                [-c] [-p] [-a] [-m] [--user-agent USER_AGENT] [--start START]
+                [--stop STOP] [--ids IDS [IDS ...]] [-w] [-o] [--mbox] [-v]
                 [--colour] [--delay DELAY]
                 group
 
@@ -92,23 +92,21 @@ Authentication Options:
 What to archive:
   By default, all the below.
 
-  -e, --email           Only archive html and raw email and attachments (from email) 
-                        through the messages API
+  -e, --email           Only archive html and raw email and attachments (from
+                        email) through the messages API
   -at, --attachments    Only archive attachments (from attachments list)
   -f, --files           Only archive files
   -i, --photos          Only archive photo galleries
-  -t, --topics          Only archive HTML email and attachments through 
-                        the topics API
-  -r, --raw             Only archive raw email without attachments through 
-                        the messages API
+  -t, --topics          Only archive HTML email and attachments through the
+                        topics API
+  -r, --raw             Only archive raw email without attachments through the
+                        messages API
   -d, --database        Only archive database
   -l, --links           Only archive links
   -c, --calendar        Only archive events
   -p, --polls           Only archive polls
   -a, --about           Only archive general info about the group
   -m, --members         Only archive members
-  -o, --overwrite       Overwrite existing files such as email and database
-                        records
 
 Request Options:
   --user-agent USER_AGENT
@@ -131,3 +129,9 @@ Message Range Options:
 Output Options:
   -w, --warc            Output WARC file of raw network requests. [Requires
                         warcio package installed]
+  -o, --overwrite       Overwrite existing files such as email and database
+                        records - default is to not overwrite
+  --mbox                Create mbox-formatted files for email in addition to
+                        others - default is no. Note: group.mbox is appended
+                        to, so remove/rename it if you do not want this to
+                        happen.
